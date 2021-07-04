@@ -21,8 +21,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"crypto/tls"
 	"net/http"
-	"reflect"
+	"net/url"
+	"time"
+//	"reflect"
 	"sync"
 
 	"github.com/google/martian/martianlog"
@@ -47,6 +50,14 @@ func ForReplaying(filename string, port int, cert, key string) (*Proxy, error) {
 		calls:         calls,
 		ignoreHeaders: p.ignoreHeaders,
 		conv:          lg.Converter,
+		httpTrspt: &http.Transport{
+			// TODO(adamtanner): This forces the http.Transport to not upgrade requests
+			// to HTTP/2 in Go 1.6+. Remove this once Martian can support HTTP/2.
+			TLSNextProto:          make(map[string]func(string, *tls.Conn) http.RoundTripper),
+			Proxy:                 http.ProxyFromEnvironment,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: time.Second,
+		},
 	})
 
 	// Debug logging.
@@ -131,6 +142,7 @@ type replayRoundTripper struct {
 	calls         []*call
 	ignoreHeaders map[string]bool
 	conv          *Converter
+	httpTrspt     *http.Transport
 }
 
 func (r *replayRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -143,16 +155,17 @@ func (r *replayRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for i, call := range r.calls {
+	for _, call := range r.calls {
 		if call == nil {
 			continue
 		}
 		if requestsMatch(creq, call.req, r.ignoreHeaders) {
-			r.calls[i] = nil // nil out this call so we don't reuse it
+//			r.calls[i] = nil // nil out this call so we don't reuse it
 			return toHTTPResponse(call.res, req), nil
 		}
 	}
-	return nil, fmt.Errorf("no matching request for %+v", req)
+	fmt.Printf("No Match for %s, go to the internet\n", creq.URL)
+	return r.httpTrspt.RoundTrip(req)
 }
 
 // Report whether the incoming request in matches the candidate request cand.
@@ -160,8 +173,25 @@ func requestsMatch(in, cand *Request, ignoreHeaders map[string]bool) bool {
 	if in.Method != cand.Method {
 		return false
 	}
-	if in.URL != cand.URL {
+	in_u, in_err := url.Parse(in.URL)
+	cand_u, cand_err := url.Parse(cand.URL)
+	if in_err != nil || cand_err != nil {
+		fmt.Printf("Err when parsing URL")
 		return false
+	}
+	if in_u.Host != cand_u.Host {
+		return false
+	}
+	if in_u.Path != cand_u.Path {
+		return false
+	}
+	in_query := in_u.Query()
+	cand_query := cand_u.Query() 
+	for key, _ := range in_query {
+		cand_v := cand_query[key]
+		if cand_v == nil{
+			return false
+		}
 	}
 	if in.MediaType != cand.MediaType {
 		return false
@@ -174,6 +204,7 @@ func requestsMatch(in, cand *Request, ignoreHeaders map[string]bool) bool {
 			return false
 		}
 	}
+
 	// Check headers last. See DebugHeaders.
 	return headersMatch(in.Header, cand.Header, ignoreHeaders)
 }
@@ -184,7 +215,7 @@ func requestsMatch(in, cand *Request, ignoreHeaders map[string]bool) bool {
 var DebugHeaders = false
 
 func headersMatch(in, cand http.Header, ignores map[string]bool) bool {
-	for k1, v1 := range in {
+	for k1, _ := range in {
 		if ignores[k1] {
 			continue
 		}
@@ -195,23 +226,23 @@ func headersMatch(in, cand http.Header, ignores map[string]bool) bool {
 			}
 			return false
 		}
-		if !reflect.DeepEqual(v1, v2) {
-			if DebugHeaders {
-				log.Printf("header %s: incoming %v, candidate %v", k1, v1, v2)
-			}
-			return false
-		}
+//		if !reflect.DeepEqual(v1, v2) {
+//			if DebugHeaders {
+//				log.Printf("header %s: incoming %v, candidate %v", k1, v1, v2)
+//			}
+//			return false
+//		}
 	}
-	for k2 := range cand {
-		if ignores[k2] {
-			continue
-		}
-		if in[k2] == nil {
-			if DebugHeaders {
-				log.Printf("header %s: not in incoming request but present in candidate", k2)
-			}
-			return false
-		}
-	}
+//	for k2 := range cand {
+//		if ignores[k2] {
+//			continue
+//		}
+//		if in[k2] == nil {
+//			if DebugHeaders {
+//				log.Printf("header %s: not in incoming request but present in candidate", k2)
+//			}
+//			return false
+//		}
+//	}
 	return true
 }
