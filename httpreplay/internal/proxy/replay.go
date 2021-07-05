@@ -25,6 +25,9 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+	"strings"
+	"crypto/sha256"
+	"encoding/hex"
 //	"reflect"
 	"sync"
 
@@ -96,10 +99,10 @@ type call struct {
 	res *Response
 }
 
-func constructCalls(lg *Log) ([]*call, error) {
+func constructCalls(lg *Log) (map[string]*Response, error) {
 	ignoreIDs := map[string]bool{} // IDs of requests to ignore
 	callsByID := map[string]*call{}
-	var calls []*call
+	calls := make(map[string]*Response)
 	for _, e := range lg.Entries {
 		if ignoreIDs[e.ID] {
 			continue
@@ -114,9 +117,10 @@ func constructCalls(lg *Log) ([]*call, error) {
 				// Ignore CONNECT methods.
 				ignoreIDs[e.ID] = true
 			} else {
-				c := &call{e.Request, e.Response}
-				calls = append(calls, c)
-				callsByID[e.ID] = c
+				key_hash := _hash(e.Request)
+				fmt.Println(e.Request.URL)
+				// c := &call{e.Request, e.Response}
+				calls[key_hash] = e.Response
 			}
 		case e.Request != nil:
 			if e.Response != nil {
@@ -129,17 +133,17 @@ func constructCalls(lg *Log) ([]*call, error) {
 			return nil, errors.New("entry has neither request nor response")
 		}
 	}
-	for _, c := range calls {
-		if c.req == nil || c.res == nil {
-			return nil, fmt.Errorf("missing request or response: %+v", c)
-		}
-	}
+	// for _, c := range calls {
+	// 	if c.req == nil || c.res == nil {
+	// 		return nil, fmt.Errorf("missing request or response: %+v", c)
+	// 	}
+	// }
 	return calls, nil
 }
 
 type replayRoundTripper struct {
 	mu            sync.Mutex
-	calls         []*call
+	calls         map[string]*Response
 	ignoreHeaders map[string]bool
 	conv          *Converter
 	httpTrspt     *http.Transport
@@ -155,17 +159,30 @@ func (r *replayRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, call := range r.calls {
-		if call == nil {
-			continue
-		}
-		if requestsMatch(creq, call.req, r.ignoreHeaders) {
-//			r.calls[i] = nil // nil out this call so we don't reuse it
-			return toHTTPResponse(call.res, req), nil
-		}
+	req_hash := _hash(creq)
+	res := r.calls[req_hash]
+	if res != nil {
+		return toHTTPResponse(res, req), nil
+	}else {
+		fmt.Printf("No Match for %s, go to the internet\n", creq.URL)
+		return r.httpTrspt.RoundTrip(req)
 	}
-	fmt.Printf("No Match for %s, go to the internet\n", creq.URL)
-	return r.httpTrspt.RoundTrip(req)
+}
+
+func _hash(req *Request) string {
+	var keys strings.Builder
+	url, err := url.Parse(req.URL)
+	url_query := url.Query() 
+	if err != nil {
+		fmt.Printf("Err when parsing URL")
+	}
+	keys.WriteString(url.Host)
+	keys.WriteString(url.Path)
+	for query_key, _ := range url_query {
+		keys.WriteString(query_key)
+	}
+	hash := sha256.Sum256([]byte(keys.String()))
+	return hex.EncodeToString(hash[:])
 }
 
 // Report whether the incoming request in matches the candidate request cand.
