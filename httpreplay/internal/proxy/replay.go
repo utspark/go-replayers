@@ -29,6 +29,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 //	"reflect"
+	"sort"
 	"sync"
 
 	"github.com/google/martian/martianlog"
@@ -118,7 +119,7 @@ func constructCalls(lg *Log) (map[string]*Response, error) {
 				ignoreIDs[e.ID] = true
 			} else {
 				key_hash := _hash(e.Request)
-				fmt.Println(e.Request.URL)
+				// fmt.Println(e.Request.URL)
 				// c := &call{e.Request, e.Response}
 				calls[key_hash] = e.Response
 			}
@@ -171,15 +172,20 @@ func (r *replayRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 
 func _hash(req *Request) string {
 	var keys strings.Builder
+	key_query_array := make([]string, 5)
 	url, err := url.Parse(req.URL)
-	url_query := url.Query() 
 	if err != nil {
 		fmt.Printf("Err when parsing URL")
 	}
+	url_query := url.Query() 
 	keys.WriteString(url.Host)
 	keys.WriteString(url.Path)
 	for query_key, _ := range url_query {
-		keys.WriteString(query_key)
+		key_query_array = append(key_query_array, query_key)	
+	}
+	sort.Strings(key_query_array)
+	for _, key := range key_query_array {
+		keys.WriteString(key)
 	}
 	hash := sha256.Sum256([]byte(keys.String()))
 	return hex.EncodeToString(hash[:])
