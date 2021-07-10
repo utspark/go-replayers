@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/google/go-replayers/httpreplay/internal/proxy"
 	"github.com/google/martian/martianhttp"
@@ -77,7 +78,7 @@ func main() {
 	go http.Serve(lControl, mux)
 
 	sigc := make(chan os.Signal, 1)
-	signal.Notify(sigc, os.Interrupt)
+	signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 
 	<-sigc
 
