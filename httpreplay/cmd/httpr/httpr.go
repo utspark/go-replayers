@@ -23,6 +23,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"runtime"
 	"io/ioutil"
 	"log"
 	"net"
@@ -36,10 +37,11 @@ import (
 )
 
 var (
-	port         = flag.Int("port", 8080, "port of the proxy")
+	host 			 	 = flag.String("listen-host", "0.0.0.0", "port of the proxy")
+	port         = flag.Int("listen-port", 8080, "port of the proxy")
 	controlPort  = flag.Int("control-port", 8181, "port for controlling the proxy")
-	record       = flag.String("record", "", "record traffic and save to filename")
-	replay       = flag.String("replay", "", "read filename and replay traffic")
+	record       = flag.String("w", "", "record traffic and save to filename (write)")
+	replay       = flag.String("S", "", "read filename and replay traffic (Serve)")
 	cert         = flag.String("cert", "", "The server certificate file path")
 	key          = flag.String("key", "", "The private key file path")
 	debugHeaders = flag.Bool("debug-headers", false, "log header mismatches")
@@ -53,6 +55,7 @@ func main() {
 	if *record != "" && *replay != "" {
 		log.Fatal("provide only one of -record and -replay")
 	}
+	fmt.Printf("httpr: starting proxy on port %d and control on port %d", *port, *controlPort)
 	log.Printf("httpr: starting proxy on port %d and control on port %d", *port, *controlPort)
 
 	var pr *proxy.Proxy

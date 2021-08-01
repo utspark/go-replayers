@@ -139,6 +139,7 @@ func constructCalls(lg *Log) (map[string]*Response, error) {
 	// 		return nil, fmt.Errorf("missing request or response: %+v", c)
 	// 	}
 	// }
+	log.Printf("=====DONE CONSTRUCTING FROM TRAFFIC=====\n")
 	return calls, nil
 }
 
@@ -151,6 +152,7 @@ type replayRoundTripper struct {
 }
 
 func (r *replayRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// serve_beg := time.Now()
 	if req.Body != nil {
 		defer req.Body.Close()
 	}
@@ -158,14 +160,16 @@ func (r *replayRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	if err != nil {
 		return nil, err
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	// r.mu.Lock()
+	// defer r.mu.Unlock()
 	req_hash := _hash(creq)
 	res := r.calls[req_hash]
 	if res != nil {
+		// serve_end := time.Now()
+		// log.Printf("Found hash Serve time: %v\n", serve_end.Sub(serve_beg))
 		return toHTTPResponse(res, req), nil
-	}else {
-		fmt.Printf("No Match for %s, go to the internet\n", creq.URL)
+	} else {
+		log.Printf("No Match for %s, go to the internet\n", creq.URL)
 		return r.httpTrspt.RoundTrip(req)
 	}
 }
@@ -173,21 +177,26 @@ func (r *replayRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 func _hash(req *Request) string {
 	var keys strings.Builder
 	key_query_array := make([]string, 5)
-	url, err := url.Parse(req.URL)
+	parsed_url, err := url.Parse(req.URL)
 	if err != nil {
 		fmt.Printf("Err when parsing URL")
 	}
-	url_query := url.Query() 
-	keys.WriteString(url.Host)
-	keys.WriteString(url.Path)
-	for query_key, _ := range url_query {
-		key_query_array = append(key_query_array, query_key)	
+	url_query := parsed_url.Query()
+	keys.WriteString(req.Method)
+	keys.WriteString(parsed_url.Path)
+	keys.WriteString(parsed_url.Host)
+	for query_key, query_value := range url_query {
+		if query_value != nil {
+			key_query_array = append(key_query_array, query_key)
+		}
 	}
 	sort.Strings(key_query_array)
 	for _, key := range key_query_array {
 		keys.WriteString(key)
 	}
 	hash := sha256.Sum256([]byte(keys.String()))
+	log.Printf("URL: %s\n", req.URL)
+	log.Printf("KEY: %s\n", keys.String())
 	return hex.EncodeToString(hash[:])
 }
 
@@ -209,7 +218,7 @@ func requestsMatch(in, cand *Request, ignoreHeaders map[string]bool) bool {
 		return false
 	}
 	in_query := in_u.Query()
-	cand_query := cand_u.Query() 
+	cand_query := cand_u.Query()
 	for key, _ := range in_query {
 		cand_v := cand_query[key]
 		if cand_v == nil{
