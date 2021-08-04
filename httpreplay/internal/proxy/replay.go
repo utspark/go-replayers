@@ -179,7 +179,7 @@ func _hash(req *Request) string {
 	key_query_array := make([]string, 5)
 	parsed_url, err := url.Parse(req.URL)
 	if err != nil {
-		fmt.Printf("Err when parsing URL")
+		log.Printf("Err when parsing URL")
 	}
 	url_query := parsed_url.Query()
 	keys.WriteString(req.Method)
@@ -195,8 +195,8 @@ func _hash(req *Request) string {
 		keys.WriteString(key)
 	}
 	hash := sha256.Sum256([]byte(keys.String()))
-	log.Printf("URL: %s\n", req.URL)
-	log.Printf("KEY: %s\n", keys.String())
+	// log.Printf("URL: %s\n", req.URL)
+	// log.Printf("KEY: %s\n", keys.String())
 	return hex.EncodeToString(hash[:])
 }
 
@@ -208,7 +208,7 @@ func requestsMatch(in, cand *Request, ignoreHeaders map[string]bool) bool {
 	in_u, in_err := url.Parse(in.URL)
 	cand_u, cand_err := url.Parse(cand.URL)
 	if in_err != nil || cand_err != nil {
-		fmt.Printf("Err when parsing URL")
+		log.Printf("Err when parsing URL")
 		return false
 	}
 	if in_u.Host != cand_u.Host {
