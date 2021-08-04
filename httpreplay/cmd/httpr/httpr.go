@@ -23,7 +23,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"runtime"
+	// "runtime"
 	"io/ioutil"
 	"log"
 	"net"

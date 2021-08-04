@@ -167,9 +167,10 @@ func (r *replayRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	if res != nil {
 		// serve_end := time.Now()
 		// log.Printf("Found hash Serve time: %v\n", serve_end.Sub(serve_beg))
+		log.Printf("[replay]URL: %s\n", creq.URL)
 		return toHTTPResponse(res, req), nil
 	} else {
-		log.Printf("No Match for %s, go to the internet\n", creq.URL)
+		log.Printf("[non-replay]No Match for %s, go to the internet\n", creq.URL)
 		return r.httpTrspt.RoundTrip(req)
 	}
 }
@@ -195,8 +196,8 @@ func _hash(req *Request) string {
 		keys.WriteString(key)
 	}
 	hash := sha256.Sum256([]byte(keys.String()))
-	log.Printf("URL: %s\n", req.URL)
-	log.Printf("KEY: %s\n", keys.String())
+	// log.Printf("URL: %s\n", req.URL)
+	// log.Printf("KEY: %s\n", keys.String())
 	return hex.EncodeToString(hash[:])
 }
 
